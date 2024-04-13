@@ -45,7 +45,13 @@ namespace ATOS_in_Home
                 Thread.Sleep(1000);
             }
         }
-        #endif
+#endif
+
+        public static void onExit(object sender, ConsoleCancelEventArgs args)
+        {
+            driver.Quit();
+        }
+
 
         static public EdgeDriver GenerateDriver()
         {

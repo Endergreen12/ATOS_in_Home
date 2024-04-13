@@ -1,10 +1,12 @@
 ﻿using static ATOS_in_Home.Functions;
 
 // 準備
-Console.WriteLine("ATOS in Home | made by Endergreen12");
+Console.WriteLine("ATOS in Home | made by Endergreen12\nこのアプリを終了するときはバツボタンではなく Ctrl + C を押してください");
 string? station = "";
 string? lineName = "";
 string? direction = "";
+
+Console.CancelKeyPress += new ConsoleCancelEventHandler(onExit);
 
 driver = GenerateDriver();
 
