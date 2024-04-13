@@ -33,8 +33,8 @@ namespace ATOS_in_Home
         public static string jrUrl = "https://www.jreast-timetable.jp/cgi-bin/st_search.cgi?mode=0&ekimei=";
         public static string atosSimuUrl = "https://sound-ome201.elffy.net/simulator/simulator_atos/";
 
-        #if DEBUG
         public static DateTime customDate;
+        public static bool showTime = false;
 
         static public void TickCustomDate()
         {
@@ -45,7 +45,6 @@ namespace ATOS_in_Home
                 Thread.Sleep(1000);
             }
         }
-#endif
 
         public static void onExit(object sender, ConsoleCancelEventArgs args)
         {
@@ -98,13 +97,7 @@ namespace ATOS_in_Home
 
             // 時刻表のテーブルからその時間の電車を取得
             var diaTable = driver.FindElement(By.ClassName("result_03"));
-            DateTime dateTime =
-            #if DEBUG
-                    customDate
-            #else
-                    DateTime.Now
-            #endif
-            ;
+            DateTime dateTime = customDate;
             int hour = dateTime.Hour;
             ReadOnlyCollection<IWebElement> trains;
             Train nextTrain = new Train();
@@ -133,14 +126,8 @@ namespace ATOS_in_Home
                 int trainMinute = int.Parse(train.FindElement(By.ClassName("minute")).Text);
                 if (trainMinute > dateTime.Minute || hour != dateTime.Hour)
                 {
-                    nextTrain.departTime =
-                    #if DEBUG
-                            customDate
-                    #else
-                            DateTime.Now
-                    #endif
-                    .AddHours(hour - dateTime.Hour).AddMinutes(trainMinute - dateTime.Minute);
-                    Thread.Sleep(500); // 早すぎるとarrow_boxがロードされておらずエラーが出る ロードされた目印を見つけて明示的なwaitをするべきだが全然見つからないのであまりよくないがSleep
+                    nextTrain.departTime = customDate.AddHours(hour - dateTime.Hour).AddMinutes(trainMinute - dateTime.Minute);
+                    Thread.Sleep(1000); // 早すぎるとarrow_boxがロードされておらずエラーが出る ロードされた目印を見つけて明示的なwaitをするべきだが全然見つからないのであまりよくないがSleep
                     // 時間の上でホバーすると追加の情報が出るのでホバーさせる
                     new Actions(driver)
                     .MoveToElement(train)
@@ -209,7 +196,6 @@ namespace ATOS_in_Home
             {
                 // 要素を設定して自動放送開始
                 var postScript = "";
-                //if(station.c)
                 switch (type)
                 {
                     case AnnounceType.ArrivalNotice:
@@ -221,7 +207,17 @@ namespace ATOS_in_Home
                         break;
                 }
 
-                station.SelectByText(stationStr + postScript);
+                bool isExist = false;
+                foreach(var option in station.Options)
+                {
+                    if(option.Text == stationStr + postScript)
+                    {
+                        isExist = true;
+                        break;
+                    }
+                }
+
+                station.SelectByText(isExist ? stationStr + postScript : stationStr);
                 hourList.SelectByIndex(hour);
                 minList.SelectByIndex(minute);
                 kindList.SelectByText(typeStr);
@@ -231,13 +227,7 @@ namespace ATOS_in_Home
                 greenCar[3].Click();
                 if (kakekomiWarn.Selected)
                     kakekomiWarn.Click();
-                if (
-                #if DEBUG
-                            customDate
-                #else
-                            DateTime.Now
-                #endif
-                .Hour <= 9)
+                if (customDate.Hour <= 9)
                     greetings[1].Click();
 
                 if (type != AnnounceType.ArrivalNotice)
