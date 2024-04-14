@@ -17,6 +17,7 @@ namespace ATOS_in_Home
         public string type = "";                // 種別
         public string dest = "";                // 行先
         public string nextSt = "";              // 次駅
+        public string lineName = "";                // 路線
         public DateTime departTime;             // 出発時間
         public bool hasGreenCar = false;        // グリーン車がついているか
         public bool isFirst = false;            // 始発かどうか
@@ -73,13 +74,16 @@ namespace ATOS_in_Home
         public static int trackNum = 1;
         public static string jrUrl = "https://www.jreast-timetable.jp/cgi-bin/st_search.cgi?mode=0&ekimei=";
         public static string atosSimuUrl = "https://sound-ome201.elffy.net/simulator/simulator_atos/";
+        public static string atosSimuMaleUrl = "https://sound-ome201.elffy.net/simulator/simulator_atos_tsuda/";
         public static string firstMark = "●";
         public static string atosWindow = "";
+        public static string[] lineWithGreenCar = ["東海道線", "横須賀", "総武快速線", "宇都宮線", "高崎線", "湘南新宿ライン", "上野東京ライン", "常磐線"];
 
         public static DateTime customDate;
         public static bool showTime = false;
         public static bool stopTicking = false;
         public static bool useCustomDate = false;
+        public static bool maleVoice = false;
 
         static public void TickCustomDate()
         {
@@ -274,6 +278,8 @@ namespace ATOS_in_Home
                     }
 
                     nextTrain.nextSt = nextStationElem.Text;
+
+                    nextTrain.lineName = lineName;
                     break;
                 }
             }
@@ -313,19 +319,26 @@ namespace ATOS_in_Home
             var carNumberList = new SelectElement(driver.FindElement(By.Id("carnumber")));                  // 両数
             var trackNumberList = new SelectElement(driver.FindElement(By.Id("tracknumber")));              // 番線
             var nextStList = new SelectElement(driver.FindElement(By.Id("nextst")));                        // 次駅
-
+ 
             var greetings = driver.FindElements(By.Name("morning"));                                        // 予告放送言い回し
-            var yellowLine = driver.FindElements(By.Name("yelowline"));                                     // 接近放送言い回し
             var greenCar = driver.FindElements(By.Name("green-car"));                                       // グリーン車
             var announceType = driver.FindElements(By.Name("bro_set"));                                     // 放送種類の選択
             var kakekomiWarn = driver.FindElement(By.Name("kakekomi"));                                     // 駆け込み注意喚起
             var firstTrain = driver.FindElement(By.Name("dep"));                                            // 当駅始発
             var nextSt = driver.FindElement(By.Name("nextst"));                                             // 次駅(チェックボックス)
-            var nextSt2 = driver.FindElement(By.Name("nextst2"));                                           // 連動タイプ
             var stationElem = driver.FindElement(By.Id("station"));                                         // 行先(要素)
             var nextStElem = driver.FindElement(By.Id("nextst"));                                           // 次駅(要素)
             var gene = driver.FindElement(By.Id("gene"));                                                   // 放送生成
             var inputList = driver.FindElement(By.Id("inputList"));                                         // ★ 自動放送開始 ★
+
+            // 津田氏に存在しないパーツ
+            ReadOnlyCollection<IWebElement>? yellowLine = null;                                             // 接近放送言い回し
+            IWebElement? nextSt2 = null;                                                                    // 連動タイプ
+            if (!maleVoice)
+            {
+                yellowLine = driver.FindElements(By.Name("yelowline"));                                 
+                nextSt2 = driver.FindElement(By.Name("nextst2"));                                       
+            }
 
             Console.WriteLine("[Announce] サイトの準備を待っています...");
 
@@ -336,6 +349,7 @@ namespace ATOS_in_Home
             Console.WriteLine("[Announce] サイトの準備完了");
             Console.WriteLine("[Announce] 設定の準備中");
 
+            // 発車放送
             if(type == AnnounceType.Departing) // 音鉄さんのATOSシミュは出発放送が仙台式なので汎用のやつを再現する
             {
                 driver.ExecuteScript("InputClear()");
@@ -350,6 +364,7 @@ namespace ATOS_in_Home
                     action.DoubleClick(allList.SelectedOption).Build().Perform(); // ダブルクリックでパーツが追加される
                 }
             }
+            // 到着予告放送・到着放送
             else
             {
                 // 要素を設定して自動放送開始
@@ -376,11 +391,14 @@ namespace ATOS_in_Home
                 kindList.SelectByText(train.type);
                 carNumberList.SelectByText(carsNum + "両です");
                 trackNumberList.SelectByText(trackNum + "番線");
-                yellowLine[1].Click(); // 黄色い点字ブロック固定
 
+                if(yellowLine != null && !maleVoice)
+                    yellowLine[1].Click(); // 黄色い点字ブロック固定
+
+                // 次駅放送
                 bool doNextStAnnounce = false;
 
-                if (!nextSt2.Selected) // 次駅のパーツは連動に固定
+                if (nextSt2 != null && !maleVoice && !nextSt2.Selected) // 次駅のパーツは連動に固定
                     nextSt2.Click();
 
                 var nextStArray = nextStElem.Text.Split("\r\n");
@@ -393,26 +411,35 @@ namespace ATOS_in_Home
                 if (doNextStAnnounce && !nextSt.Selected || !doNextStAnnounce && nextSt.Selected || type == AnnounceType.Arrival && nextSt.Selected)
                     nextSt.Click();
 
-                if (!train.hasGreenCar)
-                    greenCar[(int)GreenCarType.NoGreenCar].Click();
-                else
-                    greenCar[(int)GreenCarType.HasGreenCar].Click();
+                // グリーン車
+                GreenCarType greenType = GreenCarType.NoAnnounce;
 
-                if (kakekomiWarn.Selected) // 駆け込み注意喚起を外す
+                if (lineWithGreenCar.Contains(train.lineName)) // グリーン車がそもそもない路線の場合は案内をしない
+                    greenType = train.hasGreenCar ? GreenCarType.HasGreenCar : GreenCarType.NoGreenCar;
+
+                greenCar[(int)greenType].Click();
+
+                // 駆け込み注意喚起を外す
+                if (kakekomiWarn.Selected)
                     kakekomiWarn.Click();
 
+                // 始発
                 if (train.isFirst && !firstTrain.Selected || !train.isFirst && firstTrain.Selected)
                     firstTrain.Click();
 
-                greetings[customDate.Hour < 9 ? (int)GreetingsType.GoodMorning : (int)GreetingsType.Normal].Click(); // 9時以前はおはようございますにする
+                // 9時以前はおはようございますにする
+                greetings[customDate.Hour < 9 ? (int)GreetingsType.GoodMorning : (int)GreetingsType.Normal].Click();
 
+                // 放送の種類
                 announceType[(int)type].Click();
 
+                // 放送を生成
                 gene.Click();
             }
 
             Console.WriteLine("[Announce] 放送を開始");
 
+            // 放送開始
             inputList.Click();
 
             // 放送が終わるまで待つ

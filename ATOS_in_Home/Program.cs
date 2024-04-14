@@ -13,6 +13,14 @@ int? announceInterval = 0;
 myHandlerDele = new HandlerRoutine(onExit);
 SetConsoleCtrlHandler(myHandlerDele, true);
 
+Console.WriteLine("[Main] 男声(津田氏)を選択する場合はYを、しない場合はそれ以外のキーを押してください");
+if (Console.ReadKey().Key == ConsoleKey.Y)
+{
+    atosSimuUrl = atosSimuMaleUrl;
+    maleVoice = true;
+}
+Console.WriteLine();
+
 driver = GenerateDriver();
 driver.Navigate().GoToUrl(atosSimuUrl);
 atosWindow = driver.CurrentWindowHandle;
@@ -92,7 +100,7 @@ while (true)
         doAnnounce = true;
     }
 
-    if (announceType == AnnounceType.Invalid && driver.FindElement(By.Id("inputList")).Enabled && time % announceInterval == 0) // 定期的な予告放送
+    if (announceType == AnnounceType.Invalid && departed && driver.FindElement(By.Id("inputList")).Enabled && time % announceInterval == 0) // 定期的な予告放送
     {
         announceType = AnnounceType.ArrivalNotice;
         doAnnounce = true;
