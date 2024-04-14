@@ -8,47 +8,109 @@ using System.Threading.Tasks;
 using OpenQA.Selenium.Edge;
 using System.Collections.ObjectModel;
 using OpenQA.Selenium.Interactions;
+using System.Runtime.InteropServices;
 
 namespace ATOS_in_Home
 {
     public class Train
     {
-        public string? type; // 種別
-        public string? dest; // 行先
-        public DateTime departTime; // 出発時間
+        public string type = "";                // 種別
+        public string dest = "";                // 行先
+        public string nextSt = "";              // 次駅
+        public DateTime departTime;             // 出発時間
+        public bool hasGreenCar = false;        // グリーン車がついているか
+        public bool isFirst = false;            // 始発かどうか
+        public bool lastStop = false;           // 当駅どまりかどうか
     }
 
     internal class Functions
     {
+        // ハンドラ・ルーチンに渡される定数の定義
+        public enum CtrlTypes
+        {
+            CTRL_C_EVENT = 0,
+            CTRL_BREAK_EVENT = 1,
+            CTRL_CLOSE_EVENT = 2,
+            CTRL_LOGOFF_EVENT = 5,
+            CTRL_SHUTDOWN_EVENT = 6
+        }
+
+        // Win32 APIであるSetConsoleCtrlHandler関数の宣言
+        [DllImport("Kernel32")]
+        public static extern bool
+            SetConsoleCtrlHandler(HandlerRoutine Handler, bool Add);
+
+        // SetConsoleCtrlHandler関数にメソッド（ハンドラ・ルーチン）を
+        // 渡すためのデリゲート型
+        public delegate bool HandlerRoutine(CtrlTypes CtrlType);
+
+        public static HandlerRoutine? myHandlerDele;
+
         public enum AnnounceType
         {
+            Invalid = -1,
             ArrivalNotice,
             Arrival,
             Departing
         }
 
-        public static EdgeDriver driver;
+        public enum GreenCarType
+        {
+            HasGreenCar,
+            HasGreenCarOld,
+            NoGreenCar,
+            NoAnnounce
+        }
+
+        public static EdgeDriver? driver;
         public static int carsNum = 1;
         public static int trackNum = 1;
         public static string jrUrl = "https://www.jreast-timetable.jp/cgi-bin/st_search.cgi?mode=0&ekimei=";
         public static string atosSimuUrl = "https://sound-ome201.elffy.net/simulator/simulator_atos/";
+        public static string firstMark = "●";
 
         public static DateTime customDate;
         public static bool showTime = false;
+        public static bool stopTicking = false;
+        public static bool useCustomDate = false;
 
         static public void TickCustomDate()
         {
             while (true)
             {
-                customDate = customDate.AddSeconds(1);
-                Console.WriteLine(customDate.ToString("T"));
+                if(stopTicking)
+                    return;
+
+                customDate = useCustomDate ? customDate.AddSeconds(1) : DateTime.Now;
+
+                if(showTime)
+                    Console.WriteLine("[Time] " + customDate.ToString("T"));
+
                 Thread.Sleep(1000);
             }
         }
 
-        public static void onExit(object sender, ConsoleCancelEventArgs args)
+        public static bool onExit(CtrlTypes ctrlType)
         {
-            driver.Quit();
+            if (driver != null)
+                driver.Quit();
+
+            stopTicking = true;
+
+            return false;
+        }
+
+        public static int ReadNumber(string line)
+        {
+            while (true)
+            {
+                int answer;
+                Console.WriteLine(line);
+                if (int.TryParse(Console.ReadLine(), out answer))
+                    return answer;
+                else
+                    Console.WriteLine("数字に変換できませんでした。もう一度入力してください。");
+            }
         }
 
 
@@ -72,13 +134,29 @@ namespace ATOS_in_Home
         static public Train GetNextTrain(string station, string lineName, string direction)
         {
             // JR東日本で次発の時間を取得
-            Console.WriteLine("[GetNextTrainTime] JR東日本から次の電車の時間を取得中");
+            Console.WriteLine("[GetNextTrain] JR東日本から次の電車の時間を取得中");
+
+            if (driver == null)
+            {
+                Console.WriteLine("[GetNextTrain] 不明なエラー(null)");
+                Console.ReadKey();
+                Environment.Exit(0);
+            }
 
             // 駅名を検索してその駅の指定された路線の時刻表に移動
             driver.Navigate().GoToUrl(jrUrl + station);
+
+            if(station == "" || driver.FindElements(By.PartialLinkText(station)).Count == 0)
+            {
+                Console.WriteLine("指定された駅が存在しませんでした。何かキーを押してプログラムを終了します。");
+                Console.ReadKey();
+                Environment.Exit(0);
+            }
+
             driver.FindElement(By.PartialLinkText(station)).Click();
             var resList = driver.FindElements(By.ClassName("result_02"));
 
+            bool found = false;
             // 新幹線と在来線がある駅は二つ帰ってくるのでforeach
             foreach(IWebElement res in resList)
             {
@@ -90,9 +168,17 @@ namespace ATOS_in_Home
                     {
                         bool isHoliday = DateTime.Now.DayOfWeek == DayOfWeek.Sunday || DateTime.Now.DayOfWeek == DayOfWeek.Saturday;
                         element.FindElement(By.PartialLinkText(isHoliday ? "休日" : "平日")).Click();
+                        found = true;
                         break;
                     }
                 }
+            }
+
+            if(!found)
+            {
+                Console.WriteLine("指定された方面が見つかりませんでした。何かキーを押して終了します。");
+                Console.ReadKey();
+                Environment.Exit(0);
             }
 
             // 時刻表のテーブルからその時間の電車を取得
@@ -114,7 +200,7 @@ namespace ATOS_in_Home
                 // もし今の時間に電車がないか既に全部発車している場合は1時間足してもう一回確認
                 if (trains.Count == 0 || int.Parse(
                     String.Concat(Array.FindAll(trains.ElementAt(trains.Count - 1).Text.ToCharArray(), Char.IsDigit))) // 文字列から数字以外の文字を消す
-                    < dateTime.Minute && dateTime.Hour == hour)
+                    <= dateTime.Minute && dateTime.Hour == hour)
                     hour++;
                 else
                     break;
@@ -124,72 +210,134 @@ namespace ATOS_in_Home
             foreach(var train in trains)
             {
                 int trainMinute = int.Parse(train.FindElement(By.ClassName("minute")).Text);
-                if (trainMinute > dateTime.Minute || hour != dateTime.Hour)
+                // 次発の電車を見つけたらnextTrainにその電車を登録する
+                if (trainMinute > dateTime.Minute || hour != dateTime.Hour) // その時間より1時間上だった場合は分を確認する必要がないのでそのまま登録する
                 {
-                    nextTrain.departTime = customDate.AddHours(hour - dateTime.Hour).AddMinutes(trainMinute - dateTime.Minute);
-                    Thread.Sleep(1000); // 早すぎるとarrow_boxがロードされておらずエラーが出る ロードされた目印を見つけて明示的なwaitをするべきだが全然見つからないのであまりよくないがSleep
-                    // 時間の上でホバーすると追加の情報が出るのでホバーさせる
-                    new Actions(driver)
-                    .MoveToElement(train)
-                    .Perform();
+                    if(train.FindElements(By.ClassName("mark_etc")).Count != 0)
+                        nextTrain.isFirst = train.FindElement(By.ClassName("mark_etc")).Text.Contains(firstMark);
+
+                    nextTrain.departTime = dateTime.AddHours(hour - dateTime.Hour).AddMinutes(trainMinute - dateTime.Minute).AddSeconds(-dateTime.Second); // DateTimeは後からいじれないというクソ仕様なので無理やり新しく設定する
+
+                    while (true) // まれにarrow_boxが出ないことがあるので何回も試行する
+                    {
+                        // 時間の上でホバーすると追加の情報が出るのでホバーさせる
+                        new Actions(driver).MoveToElement(train).Perform();
+
+                        if (train.FindElements(By.ClassName("arrow_box")).Count != 0)
+                            break;
+
+                        Console.WriteLine("[GetNextTrain] arrow_box 再試行中");
+                        Thread.Sleep(100);
+                    }
 
                     var arrowBox = train.FindElement(By.ClassName("arrow_box"));
                     var rawType = arrowBox.FindElement(By.ClassName("arrowbox_train")).Text;
-                    nextTrain.type = rawType.Substring(rawType.LastIndexOf("：") + 1); // "無印:普通"となっていたりするので種別以前の文字を消す
-                    var rawDest = arrowBox.FindElement(By.ClassName("arrowbox_dest")).Text;
-                    nextTrain.dest = rawDest.Substring(rawDest.LastIndexOf("：") + 1);
+                    var typeSubstring = rawType.Substring(rawType.IndexOf("：") + 1);
+                    if (typeSubstring.Contains("\r\n"))
+                        typeSubstring = typeSubstring.Remove(rawType.IndexOf("\r\n") - 6);
+                    nextTrain.type = typeSubstring; // "無印:普通"となっていたりするので種別以外の文字を消す
 
+                    var rawDest = arrowBox.FindElement(By.ClassName("arrowbox_dest")).Text;
+                    var destSubstring = rawDest.Substring(rawDest.IndexOf("：") + 1);
+                    if (destSubstring.Contains("\r\n"))
+                        destSubstring = destSubstring.Remove(rawDest.IndexOf("\r\n") - 6);
+                    nextTrain.dest = destSubstring;
+
+                    train.Click();
+
+                    nextTrain.hasGreenCar = driver.FindElement(By.Id("tbl_train")).Text.Contains("グリーン車");
+                    driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(2);
+                    var stations = driver.FindElement(By.Id("tbl_train_label1")).FindElements(By.TagName("th"));
+                    IWebElement? nextStationElem = null;
+
+                    foreach (var stationName in stations) // 次駅を探す
+                        if(stationName.Text == station)
+                        {
+                            nextStationElem = stations.ElementAt(stations.IndexOf(stationName) + 1);
+                            break;
+                        }
+
+                    if(nextStationElem == null)
+                    {
+                        Console.WriteLine("[GetNextTrain] 不明なエラーが発生しました(null)");
+                        Console.ReadKey();
+                        Environment.Exit(0);
+                    }
+
+                    if (nextStationElem.GetAttribute("class") == "last") // 当駅が終点の場合、駅名ではない"備考"を取得するのでそれで判断
+                        nextTrain.lastStop = true;
+                    else
+                        nextTrain.nextSt = nextStationElem.Text;
                     break;
                 }
             }
 
-            ShowNextTrain(nextTrain.type, nextTrain.departTime, nextTrain.dest);
-            Announce(AnnounceType.ArrivalNotice, nextTrain.departTime.Hour, nextTrain.departTime.Minute, nextTrain.dest, nextTrain.type, carsNum, trackNum);
+            ShowNextTrain(nextTrain);
+            Announce(AnnounceType.ArrivalNotice, nextTrain);
 
             return nextTrain;
         }
 
-        static public void Announce(AnnounceType type, int hour, int minute, string stationStr, string typeStr, int carsNum, int trackNum)
+        static public void Announce(AnnounceType type, Train train)
         {
+            if (type == AnnounceType.Invalid)
+                return;
+
             Console.WriteLine("[Announce] 放送の準備中");
 
-            if(driver.Url != atosSimuUrl)
+            if (driver == null)
+            {
+                Console.WriteLine("[Announce] 不明なエラー(null)");
+                Console.ReadKey();
+                Environment.Exit(0);
+            }
+
+            if (driver.Url != atosSimuUrl)
                 driver.Navigate().GoToUrl(atosSimuUrl);
 
             // 変数の初期化
-            var allList = new SelectElement(driver.FindElement(By.Id("all")));
-            var station = new SelectElement(driver.FindElement(By.Id("station")));
-            var hourList = new SelectElement(driver.FindElement(By.Id("hour")));
-            var minList = new SelectElement(driver.FindElement(By.Id("min")));
-            var kindList = new SelectElement(driver.FindElement(By.Id("kind")));
-            var carNumberList = new SelectElement(driver.FindElement(By.Id("carnumber")));
-            var trackNumberList = new SelectElement(driver.FindElement(By.Id("tracknumber")));
+            var allList = new SelectElement(driver.FindElement(By.Id("all")));                              // すべてのパーツ
+            var station = new SelectElement(driver.FindElement(By.Id("station")));                          // 行先
+            var hourList = new SelectElement(driver.FindElement(By.Id("hour")));                            // 時刻(時)
+            var minList = new SelectElement(driver.FindElement(By.Id("min")));                              // 時刻(分)
+            var kindList = new SelectElement(driver.FindElement(By.Id("kind")));                            // 種別
+            var carNumberList = new SelectElement(driver.FindElement(By.Id("carnumber")));                  // 両数
+            var trackNumberList = new SelectElement(driver.FindElement(By.Id("tracknumber")));              // 番線
+            var nextStList = new SelectElement(driver.FindElement(By.Id("nextst")));                        // 次駅
 
-            var greetings = driver.FindElements(By.Name("morning"));
-            var yellowLine = driver.FindElements(By.Name("yelowline"));
-            var greenCar = driver.FindElements(By.Name("green-car"));
-            var announceType = driver.FindElements(By.Name("bro_set"));
-            var kakekomiWarn = driver.FindElement(By.Name("kakekomi"));
-            var gene = driver.FindElement(By.Id("gene"));
-            var inputList = driver.FindElement(By.Id("inputList"));
+            var greetings = driver.FindElements(By.Name("morning"));                                        // 予告放送言い回し
+            var yellowLine = driver.FindElements(By.Name("yelowline"));                                     // 接近放送言い回し
+            var greenCar = driver.FindElements(By.Name("green-car"));                                       // グリーン車
+            var announceType = driver.FindElements(By.Name("bro_set"));                                     // 放送種類の選択
+            var kakekomiWarn = driver.FindElement(By.Name("kakekomi"));                                     // 駆け込み注意喚起
+            var firstTrain = driver.FindElement(By.Name("dep"));                                            // 当駅始発
+            var nextSt = driver.FindElement(By.Name("nextst"));                                             // 次駅(チェックボックス)
+            var nextSt2 = driver.FindElement(By.Name("nextst2"));                                           // 連動タイプ
+            var stationElem = driver.FindElement(By.Id("station"));                                         // 行先(要素)
+            var nextStElem = driver.FindElement(By.Id("nextst"));                                           // 次駅(要素)
+            var gene = driver.FindElement(By.Id("gene"));                                                   // 放送生成
+            var inputList = driver.FindElement(By.Id("inputList"));                                         // ★ 自動放送開始 ★
 
             Console.WriteLine("[Announce] サイトの準備を待っています...");
 
             // 準備ができるまで待つ
-            WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(60));
-            wait.Until(d => inputList.Enabled);
+            new WebDriverWait(driver, TimeSpan.FromSeconds(60)).Until(d => inputList.Enabled);
 
-            Console.WriteLine("[Announce] サイトの準備完了\n[Announce] 設定を入力しています...");
+            Console.WriteLine("[Announce] サイトの準備完了");
+            Console.WriteLine("[Announce] 設定の準備中");
 
-            if(type == AnnounceType.Departing)
+            if(type == AnnounceType.Departing) // 音鉄さんのATOSシミュは出発放送が仙台式なので汎用のやつを再現する
             {
                 driver.ExecuteScript("InputClear()");
                 string[] parts = [trackNum + "番線", "ドアが閉まります", "ご注意下さい"];
+
+                Console.WriteLine("[Announce] 設定を入力しています...");
+
                 var action = new Actions(driver);
                 foreach (string part in parts)
                 {
                     allList.SelectByText(part);
-                    action.DoubleClick(allList.SelectedOption).Build().Perform();
+                    action.DoubleClick(allList.SelectedOption).Build().Perform(); // ダブルクリックでパーツが追加される
                 }
             }
             else
@@ -207,27 +355,46 @@ namespace ATOS_in_Home
                         break;
                 }
 
-                bool isExist = false;
-                foreach(var option in station.Options)
-                {
-                    if(option.Text == stationStr + postScript)
-                    {
-                        isExist = true;
-                        break;
-                    }
-                }
+                Console.WriteLine("[Announce] 設定を入力しています...");
 
-                station.SelectByText(isExist ? stationStr + postScript : stationStr);
-                hourList.SelectByIndex(hour);
-                minList.SelectByIndex(minute);
-                kindList.SelectByText(typeStr);
+                var stationArray = stationElem.Text.Split("\r\n");
+                if (stationArray.Contains(train.dest)) // まず単体パーツがあるか確認
+                    station.SelectByText(stationArray.Contains(train.dest + postScript) ? train.dest + postScript : train.dest); // 行が参りますなど連動パーツの存在を確認しあれば連動で、なければ単体
+
+                hourList.SelectByIndex(train.departTime.Hour);
+                minList.SelectByIndex(train.departTime.Minute);
+                kindList.SelectByText(train.type);
                 carNumberList.SelectByText(carsNum + "両です");
                 trackNumberList.SelectByText(trackNum + "番線");
-                yellowLine[1].Click();
-                greenCar[3].Click();
-                if (kakekomiWarn.Selected)
+                yellowLine[1].Click(); // 黄色い点字ブロック固定
+
+                bool doNextStAnnounce = false;
+
+                if (!nextSt2.Selected) // 次駅のパーツは連動に固定
+                    nextSt2.Click();
+
+                var nextStArray = nextStElem.Text.Split("\r\n");
+                if (nextStArray.Contains(train.nextSt + "(停)"))
+                {
+                    nextStList.SelectByText(train.nextSt + "(停)");
+                    doNextStAnnounce = true;
+                }
+
+                if (doNextStAnnounce && !nextSt.Selected || !doNextStAnnounce && nextSt.Selected)
+                    nextSt.Click();
+
+                if (!train.hasGreenCar)
+                    greenCar[(int)GreenCarType.NoGreenCar].Click();
+                else
+                    greenCar[(int)GreenCarType.HasGreenCar].Click();
+
+                if (kakekomiWarn.Selected) // 駆け込み注意喚起を外す
                     kakekomiWarn.Click();
-                if (customDate.Hour <= 9)
+
+                if (train.isFirst && !firstTrain.Selected || !train.isFirst && firstTrain.Selected)
+                    firstTrain.Click();
+
+                if (customDate.Hour <= 9) // 9時以前はおはようございますにする
                     greetings[1].Click();
 
                 if (type != AnnounceType.ArrivalNotice)
@@ -254,12 +421,16 @@ namespace ATOS_in_Home
             inputList.Click();
 
             // 放送が終わるまで待つ
-            wait.Until(d => inputList.Enabled);
+            new WebDriverWait(driver, TimeSpan.FromSeconds(60)).Until(d => inputList.Enabled);
         }
 
-        public static void ShowNextTrain(string type, DateTime nextTrainTime, string station)
+        public static void ShowNextTrain(Train train)
         {
-            Console.WriteLine(type + "\t" + nextTrainTime.ToString("t") + "\t" + station);
+            Console.Write(train.type + "\t" + train.departTime.ToString("t") + "\t" + train.dest);
+            if(train.hasGreenCar)
+                Console.Write("\tグリーン車あり");
+
+            Console.WriteLine();
         }
     }
 }
