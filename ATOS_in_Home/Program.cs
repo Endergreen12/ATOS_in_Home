@@ -1,4 +1,5 @@
-﻿using static ATOS_in_Home.Functions;
+﻿using OpenQA.Selenium;
+using static ATOS_in_Home.Functions;
 
 // 準備
 Console.Title = "ATOS in Home";
@@ -13,6 +14,8 @@ myHandlerDele = new HandlerRoutine(onExit);
 SetConsoleCtrlHandler(myHandlerDele, true);
 
 driver = GenerateDriver();
+driver.Navigate().GoToUrl(atosSimuUrl);
+atosWindow = driver.CurrentWindowHandle;
 
 Console.WriteLine("[Main] 放送する駅名を入力してください(例:栃木、小山)、最後に駅をつける必要はないです(存在しない駅名を入力するとエラーになります)");
 station = Console.ReadLine();
@@ -89,14 +92,14 @@ while (true)
         doAnnounce = true;
     }
 
-    if (announceType == AnnounceType.Invalid && time % announceInterval == 0) // 定期的な予告放送
+    if (announceType == AnnounceType.Invalid && driver.FindElement(By.Id("inputList")).Enabled && time % announceInterval == 0) // 定期的な予告放送
     {
         announceType = AnnounceType.ArrivalNotice;
         doAnnounce = true;
     }
 
     if(doAnnounce && nextTrain.type != null && nextTrain.dest != null)
-        Announce(announceType, nextTrain);
+        Announce(announceType, nextTrain, announceType == AnnounceType.Departing); // 出発放送は次発放送により止められないように放送が終わるまで待つ
 
     if(announceType == AnnounceType.Departing)
         nextTrain = GetNextTrain(station, lineName, direction);

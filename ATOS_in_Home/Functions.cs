@@ -20,7 +20,6 @@ namespace ATOS_in_Home
         public DateTime departTime;             // 出発時間
         public bool hasGreenCar = false;        // グリーン車がついているか
         public bool isFirst = false;            // 始発かどうか
-        public bool lastStop = false;           // 当駅どまりかどうか
     }
 
     internal class Functions
@@ -51,7 +50,7 @@ namespace ATOS_in_Home
             Invalid = -1,
             ArrivalNotice,
             Arrival,
-            Departing
+            Departing = 4
         }
 
         public enum GreenCarType
@@ -62,12 +61,20 @@ namespace ATOS_in_Home
             NoAnnounce
         }
 
+        public enum GreetingsType
+        {
+            Normal,
+            GoodMorning,
+            Old
+        }
+
         public static EdgeDriver? driver;
         public static int carsNum = 1;
         public static int trackNum = 1;
         public static string jrUrl = "https://www.jreast-timetable.jp/cgi-bin/st_search.cgi?mode=0&ekimei=";
         public static string atosSimuUrl = "https://sound-ome201.elffy.net/simulator/simulator_atos/";
         public static string firstMark = "●";
+        public static string atosWindow = "";
 
         public static DateTime customDate;
         public static bool showTime = false;
@@ -142,6 +149,8 @@ namespace ATOS_in_Home
                 Console.ReadKey();
                 Environment.Exit(0);
             }
+
+            driver.SwitchTo().NewWindow(WindowType.Tab);
 
             // 駅名を検索してその駅の指定された路線の時刻表に移動
             driver.Navigate().GoToUrl(jrUrl + station);
@@ -234,13 +243,13 @@ namespace ATOS_in_Home
                     var rawType = arrowBox.FindElement(By.ClassName("arrowbox_train")).Text;
                     var typeSubstring = rawType.Substring(rawType.IndexOf("：") + 1);
                     if (typeSubstring.Contains("\r\n"))
-                        typeSubstring = typeSubstring.Remove(rawType.IndexOf("\r\n") - 6);
+                        typeSubstring = typeSubstring.Remove(typeSubstring.IndexOf("\r\n"));
                     nextTrain.type = typeSubstring; // "無印:普通"となっていたりするので種別以外の文字を消す
 
                     var rawDest = arrowBox.FindElement(By.ClassName("arrowbox_dest")).Text;
                     var destSubstring = rawDest.Substring(rawDest.IndexOf("：") + 1);
                     if (destSubstring.Contains("\r\n"))
-                        destSubstring = destSubstring.Remove(rawDest.IndexOf("\r\n") - 6);
+                        destSubstring = destSubstring.Remove(destSubstring.IndexOf("\r\n"));
                     nextTrain.dest = destSubstring;
 
                     train.Click();
@@ -264,13 +273,13 @@ namespace ATOS_in_Home
                         Environment.Exit(0);
                     }
 
-                    if (nextStationElem.GetAttribute("class") == "last") // 当駅が終点の場合、駅名ではない"備考"を取得するのでそれで判断
-                        nextTrain.lastStop = true;
-                    else
-                        nextTrain.nextSt = nextStationElem.Text;
+                    nextTrain.nextSt = nextStationElem.Text;
                     break;
                 }
             }
+
+            driver.Close();
+            driver.SwitchTo().Window(atosWindow);
 
             ShowNextTrain(nextTrain);
             Announce(AnnounceType.ArrivalNotice, nextTrain);
@@ -278,7 +287,7 @@ namespace ATOS_in_Home
             return nextTrain;
         }
 
-        static public void Announce(AnnounceType type, Train train)
+        static public void Announce(AnnounceType type, Train train, bool waitRequired = false)
         {
             if (type == AnnounceType.Invalid)
                 return;
@@ -320,6 +329,7 @@ namespace ATOS_in_Home
 
             Console.WriteLine("[Announce] サイトの準備を待っています...");
 
+            driver.ExecuteScript("SoundPause()");
             // 準備ができるまで待つ
             new WebDriverWait(driver, TimeSpan.FromSeconds(60)).Until(d => inputList.Enabled);
 
@@ -380,7 +390,7 @@ namespace ATOS_in_Home
                     doNextStAnnounce = true;
                 }
 
-                if (doNextStAnnounce && !nextSt.Selected || !doNextStAnnounce && nextSt.Selected)
+                if (doNextStAnnounce && !nextSt.Selected || !doNextStAnnounce && nextSt.Selected || type == AnnounceType.Arrival && nextSt.Selected)
                     nextSt.Click();
 
                 if (!train.hasGreenCar)
@@ -394,24 +404,9 @@ namespace ATOS_in_Home
                 if (train.isFirst && !firstTrain.Selected || !train.isFirst && firstTrain.Selected)
                     firstTrain.Click();
 
-                if (customDate.Hour <= 9) // 9時以前はおはようございますにする
-                    greetings[1].Click();
+                greetings[customDate.Hour < 9 ? (int)GreetingsType.GoodMorning : (int)GreetingsType.Normal].Click(); // 9時以前はおはようございますにする
 
-                if (type != AnnounceType.ArrivalNotice)
-                {
-                    int typeNumber = 0;
-                    switch (type)
-                    {
-                        case AnnounceType.Arrival:
-                            typeNumber = 1; // 接近放送
-                            break;
-
-                        case AnnounceType.Departing:
-                            typeNumber = 4; // 出発放送
-                            break;
-                    }
-                    announceType[typeNumber].Click();
-                }
+                announceType[(int)type].Click();
 
                 gene.Click();
             }
@@ -421,7 +416,8 @@ namespace ATOS_in_Home
             inputList.Click();
 
             // 放送が終わるまで待つ
-            new WebDriverWait(driver, TimeSpan.FromSeconds(60)).Until(d => inputList.Enabled);
+            if(waitRequired)
+                new WebDriverWait(driver, TimeSpan.FromSeconds(60)).Until(d => inputList.Enabled);
         }
 
         public static void ShowNextTrain(Train train)
