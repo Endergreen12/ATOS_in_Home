@@ -9,6 +9,7 @@ using OpenQA.Selenium.Edge;
 using System.Collections.ObjectModel;
 using OpenQA.Selenium.Interactions;
 using System.Runtime.InteropServices;
+using OpenQA.Selenium.Chrome;
 
 namespace ATOS_in_Home
 {
@@ -25,27 +26,6 @@ namespace ATOS_in_Home
 
     internal class Functions
     {
-        // ハンドラ・ルーチンに渡される定数の定義
-        public enum CtrlTypes
-        {
-            CTRL_C_EVENT = 0,
-            CTRL_BREAK_EVENT = 1,
-            CTRL_CLOSE_EVENT = 2,
-            CTRL_LOGOFF_EVENT = 5,
-            CTRL_SHUTDOWN_EVENT = 6
-        }
-
-        // Win32 APIであるSetConsoleCtrlHandler関数の宣言
-        [DllImport("Kernel32")]
-        public static extern bool
-            SetConsoleCtrlHandler(HandlerRoutine Handler, bool Add);
-
-        // SetConsoleCtrlHandler関数にメソッド（ハンドラ・ルーチン）を
-        // 渡すためのデリゲート型
-        public delegate bool HandlerRoutine(CtrlTypes CtrlType);
-
-        public static HandlerRoutine? myHandlerDele;
-
         public enum AnnounceType
         {
             Invalid = -1,
@@ -69,7 +49,7 @@ namespace ATOS_in_Home
             Old
         }
 
-        public static EdgeDriver? driver;
+        public static ChromeDriver? driver;
         public static int carsNum = 1;
         public static int trackNum = 1;
         public static string jrUrl = "https://www.jreast-timetable.jp/cgi-bin/st_search.cgi?mode=0&ekimei=";
@@ -81,17 +61,19 @@ namespace ATOS_in_Home
 
         public static DateTime customDate;
         public static bool showTime = false;
-        public static bool stopTicking = false;
         public static bool useCustomDate = false;
         public static bool maleVoice = false;
+
+        static public void onExit(object? sender, ConsoleCancelEventArgs args)
+        {
+            if(driver != null)
+                driver.Quit();
+        }
 
         static public void TickCustomDate()
         {
             while (true)
             {
-                if(stopTicking)
-                    return;
-
                 customDate = useCustomDate ? customDate.AddSeconds(1) : DateTime.Now;
 
                 if(showTime)
@@ -99,16 +81,6 @@ namespace ATOS_in_Home
 
                 Thread.Sleep(1000);
             }
-        }
-
-        public static bool onExit(CtrlTypes ctrlType)
-        {
-            if (driver != null)
-                driver.Quit();
-
-            stopTicking = true;
-
-            return false;
         }
 
         public static int ReadNumber(string line)
@@ -125,21 +97,21 @@ namespace ATOS_in_Home
         }
 
 
-        static public EdgeDriver GenerateDriver()
+        static public ChromeDriver GenerateDriver()
         {
-            // Edge Web Driverからのログ出力を無効化する
-            var service = EdgeDriverService.CreateDefaultService();
-            #if !DEBUG
+            // Web Driverからのログ出力を無効化する
+            var service = ChromeDriverService.CreateDefaultService();
+#if !DEBUG
             service.HideCommandPromptWindow = true;
-            #endif
+#endif
 
-            // Edgeのウィンドウを非表示
-            var options = new EdgeOptions();
-            #if !DEBUG
+            // ブラウザのウィンドウを非表示
+            var options = new ChromeOptions();
+#if !DEBUG
             options.AddArgument("--headless=new");
-            #endif
+#endif
 
-            return new EdgeDriver(service, options);
+            return new ChromeDriver(service, options);
         }
 
         static public Train GetNextTrain(string station, string lineName, string direction)

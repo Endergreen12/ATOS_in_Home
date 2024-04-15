@@ -4,14 +4,15 @@ using static ATOS_in_Home.Functions;
 // 準備
 Console.Title = "ATOS in Home";
 Console.WriteLine("ATOS in Home | made by Endergreen12");
+Console.WriteLine("プログラムを終了するときは絶対Ctrl+Cを押して終了してください");
+Console.WriteLine("プログラムを終了するときは絶対Ctrl+Cを押して終了してください");
+Console.WriteLine("プログラムを終了するときは絶対Ctrl+Cを押して終了してください");
 string? station = "";
 string? lineName = "";
 string? direction = "";
 int? announceInterval = 0;
 
-// プログラム終了時にWeb Driverを終了する関数を登録
-myHandlerDele = new HandlerRoutine(onExit);
-SetConsoleCtrlHandler(myHandlerDele, true);
+Console.CancelKeyPress += new ConsoleCancelEventHandler(onExit);
 
 Console.WriteLine("[Main] 男声(津田氏)を選択する場合はYを、しない場合はそれ以外のキーを押してください");
 if (Console.ReadKey().Key == ConsoleKey.Y)
@@ -37,7 +38,7 @@ announceInterval = ReadNumber("[Main] 何秒間隔で予告放送を流すか入
 
 Console.WriteLine("自分で時間を指定したい場合はyを、現実の時間を利用する場合はほかのキーを押してください。");
 // 時間の指定
-if(Console.ReadKey().Key == ConsoleKey.Y)
+if (Console.ReadKey().Key == ConsoleKey.Y)
 {
     Console.WriteLine();
     while (true)
@@ -106,9 +107,9 @@ while (true)
         doAnnounce = true;
     }
 
-    if(doAnnounce && nextTrain.type != null && nextTrain.dest != null)
+    if (doAnnounce && nextTrain.type != null && nextTrain.dest != null)
         Announce(announceType, nextTrain, announceType == AnnounceType.Departing); // 出発放送は次発放送により止められないように放送が終わるまで待つ
 
-    if(announceType == AnnounceType.Departing)
+    if (announceType == AnnounceType.Departing)
         nextTrain = GetNextTrain(station, lineName, direction);
 }
