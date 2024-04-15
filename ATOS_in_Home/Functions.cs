@@ -18,7 +18,7 @@ namespace ATOS_in_Home
         public string type = "";                // 種別
         public string dest = "";                // 行先
         public string nextSt = "";              // 次駅
-        public string lineName = "";                // 路線
+        public string lineName = "";            // 路線
         public DateTime departTime;             // 出発時間
         public bool hasGreenCar = false;        // グリーン車がついているか
         public bool isFirst = false;            // 始発かどうか
