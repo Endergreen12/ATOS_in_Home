@@ -109,6 +109,8 @@ namespace ATOS_in_Home
             var options = new ChromeOptions();
 #if !DEBUG
             options.AddArgument("--headless=new");
+
+            options.AddArgument("--no-sandbox");
 #endif
 
             return new ChromeDriver(service, options);
