@@ -26,7 +26,7 @@ driver = GenerateDriver();
 driver.Navigate().GoToUrl(atosSimuUrl);
 atosWindow = driver.CurrentWindowHandle;
 
-Console.WriteLine("[Main] 放送する駅名を入力してください(例:栃木、小山)、最後に駅をつける必要はないです(存在しない駅名を入力するとエラーになります)");
+Console.WriteLine("[Main] 放送する駅名を入力してください、フリガナも絶対入れてください(例:栃木(とちぎ)、小山(おやま))、最後に駅をつける必要はないです(存在しない駅名を入力するとエラーになります)");
 station = Console.ReadLine();
 Console.WriteLine("[Main] 路線名を入力してください(例:宇都宮線)(存在しない路線を入力するとエラーになります)");
 lineName = Console.ReadLine();

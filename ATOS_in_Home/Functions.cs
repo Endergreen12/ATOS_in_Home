@@ -129,7 +129,7 @@ namespace ATOS_in_Home
             driver.SwitchTo().NewWindow(WindowType.Tab);
 
             // 駅名を検索してその駅の指定された路線の時刻表に移動
-            driver.Navigate().GoToUrl(jrUrl + station);
+            driver.Navigate().GoToUrl(jrUrl + station.Remove(station.IndexOf("(")));
 
             if(station == "" || driver.FindElements(By.PartialLinkText(station)).Count == 0)
             {
@@ -138,7 +138,7 @@ namespace ATOS_in_Home
                 Environment.Exit(0);
             }
 
-            driver.FindElement(By.PartialLinkText(station)).Click();
+            driver.FindElement(By.LinkText(station)).Click();
             var resList = driver.FindElements(By.ClassName("result_02"));
 
             bool found = false;
