@@ -4,15 +4,10 @@ using static ATOS_in_Home.Functions;
 // 準備
 Console.Title = "ATOS in Home";
 Console.WriteLine("ATOS in Home | made by Endergreen12");
-Console.WriteLine("プログラムを終了するときは絶対Ctrl+Cを押して終了してください");
-Console.WriteLine("プログラムを終了するときは絶対Ctrl+Cを押して終了してください");
-Console.WriteLine("プログラムを終了するときは絶対Ctrl+Cを押して終了してください");
 string? station = "";
 string? lineName = "";
 string? direction = "";
 int? announceInterval = 0;
-
-Console.CancelKeyPress += new ConsoleCancelEventHandler(onExit);
 
 Console.WriteLine("[Main] 男声(津田氏)を選択する場合はYを、しない場合はそれ以外のキーを押してください");
 if (Console.ReadKey().Key == ConsoleKey.Y)

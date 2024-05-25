@@ -49,7 +49,7 @@ namespace ATOS_in_Home
             Old
         }
 
-        public static ChromeDriver? driver;
+        public static EdgeDriver? driver;
         public static int carsNum = 1;
         public static int trackNum = 1;
         public static string jrUrl = "https://www.jreast-timetable.jp/cgi-bin/st_search.cgi?mode=0&ekimei=";
@@ -63,12 +63,6 @@ namespace ATOS_in_Home
         public static bool showTime = false;
         public static bool useCustomDate = false;
         public static bool maleVoice = false;
-
-        static public void onExit(object? sender, ConsoleCancelEventArgs args)
-        {
-            if(driver != null)
-                driver.Quit();
-        }
 
         static public void TickCustomDate()
         {
@@ -97,23 +91,23 @@ namespace ATOS_in_Home
         }
 
 
-        static public ChromeDriver GenerateDriver()
+        static public EdgeDriver GenerateDriver()
         {
             // Web Driverからのログ出力を無効化する
-            var service = ChromeDriverService.CreateDefaultService();
+            var service = EdgeDriverService.CreateDefaultService();
 #if !DEBUG
             service.HideCommandPromptWindow = true;
 #endif
 
             // ブラウザのウィンドウを非表示
-            var options = new ChromeOptions();
+            var options = new EdgeOptions();
 #if !DEBUG
             options.AddArgument("--headless=new");
 
             options.AddArgument("--no-sandbox");
 #endif
 
-            return new ChromeDriver(service, options);
+            return new EdgeDriver(service, options);
         }
 
         static public Train GetNextTrain(string station, string lineName, string direction)
@@ -237,6 +231,7 @@ namespace ATOS_in_Home
                     var stations = driver.FindElement(By.Id("tbl_train_label1")).FindElements(By.TagName("th"));
                     IWebElement? nextStationElem = null;
 
+                    station = station.Substring(0, station.IndexOf("("));
                     foreach (var stationName in stations) // 次駅を探す
                         if(stationName.Text == station)
                         {
@@ -415,6 +410,8 @@ namespace ATOS_in_Home
 
             // 放送開始
             inputList.Click();
+
+            Thread.Sleep(100);
 
             // 放送が終わるまで待つ
             if(waitRequired)
