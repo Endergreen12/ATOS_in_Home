@@ -57,7 +57,7 @@ namespace ATOS_in_Home
         public static string atosSimuMaleUrl = "https://sound-ome201.elffy.net/simulator/simulator_atos_tsuda/";
         public static string firstMark = "●";
         public static string atosWindow = "";
-        public static string[] lineWithGreenCar = ["東海道線", "横須賀", "総武快速線", "宇都宮線", "高崎線", "湘南新宿ライン", "上野東京ライン", "常磐線"];
+        public static string[] lineWithGreenCar = ["東海道線", "横須賀線", "総武快速線", "宇都宮線", "高崎線", "湘南新宿ライン", "上野東京ライン", "常磐線"];
 
         public static DateTime customDate;
         public static bool showTime = false;
